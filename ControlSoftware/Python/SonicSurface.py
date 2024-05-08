@@ -2,6 +2,8 @@ import serial
 import serial.tools.list_ports
 import numpy as np
 from Waves import Waves
+import time
+import csv
 
 class SonicSurface:
     PHASE_DIVS = 32
@@ -11,7 +13,10 @@ class SonicSurface:
     
     def __init__(self):
         self.serialConn = None
-        self.emittersPos = np.array( self.EMITTERS_POS ).reshape(self.N_EMMITERS, 3)
+        emittersPos = np.array( self.EMITTERS_POS ).reshape(self.N_EMMITERS, 3)
+        rounding=np.around(emittersPos,decimals=5) # some positions were off by distances smaller than nanometers. This caused a big problem when sorting them.
+        self.orderArray=[0, 7, 1, 2, 64, 71, 65, 66, 128, 135, 129, 130, 192, 199, 193, 194, 4, 3, 6, 5, 68, 67, 70, 69, 132, 131, 134, 133, 196, 195, 198, 197, 8, 15, 9, 10, 72, 79, 73, 74, 136, 143, 137, 138, 200, 207, 201, 202, 12, 11, 14, 13, 76, 75, 78, 77, 140, 139, 142, 141, 204, 203, 206, 205, 16, 23, 17, 18, 80, 87, 81, 82, 144, 151, 145, 146, 208, 215, 209, 210, 20, 19, 22, 21, 84, 83, 86, 85, 148, 147, 150, 149, 212, 211, 214, 213, 24, 31, 25, 26, 88, 95, 89, 90, 152, 159, 153, 154, 216, 223, 217, 218, 28, 27, 30, 29, 92, 91, 94, 93, 156, 155, 158, 157, 220, 219, 222, 221, 32, 39, 33, 34, 96, 103, 97, 98, 160, 167, 161, 162, 224, 231, 225, 226, 36, 35, 38, 37, 100, 99, 102, 101, 164, 163, 166, 165, 228, 227, 230, 229, 40, 47, 41, 42, 104, 111, 105, 106, 168, 175, 169, 170, 232, 239, 233, 234, 44, 43, 46, 45, 108, 107, 110, 109, 172, 171, 174, 173, 236, 235, 238, 237, 48, 55, 49, 50, 112, 119, 113, 114, 176, 183, 177, 178, 240, 247, 241, 242, 52, 51, 54, 53, 116, 115, 118, 117, 180, 179, 182, 181, 244, 243, 246, 245, 56, 63, 57, 58, 120, 127, 121, 122, 184, 191, 185, 186, 248, 255, 249, 250, 60, 59, 62, 61, 124, 123, 126, 125, 188, 187, 190, 189, 252, 251, 254, 253]
+        self.emittersPos=rounding
         self.phaseOffsets = np.zeros( [self.N_EMMITERS] )
         self.phases = np.zeros( [1,self.N_EMMITERS], dtype=np.complex128 )
    
@@ -33,15 +38,18 @@ class SonicSurface:
             indexPort = int(input("Enter index of serial port: "))
         selectedPort = serial.tools.list_ports.comports()[indexPort - 1]
         self.disconnect()
-        self.serialConn = serial.Serial(selectedPort.device, baudrate=230400)
+        self.serialConn = serial.Serial(selectedPort.name, baudrate=230400)
     
     #phases range from 0 to 2pi
+    #we can use this function to directly send the phases from ArrayAmp
     def sendPhases(self, phases):
         assert( phases.shape == (self.N_EMMITERS,) )
         phasesDisc = (phases % (2*np.pi)) * self.PHASE_DIVS / 2 / np.pi
+        
         #phasesDisc += self.phaseOffsets
         #phasesDisc %= self.PHASE_DIVS
-        dataToSend = bytes( phasesDisc.astype(np.uint8) )
+        dataToSend = bytes( phasesDisc.astype(np.uint8))
+        
         self.serialConn.write( bytes([254]) ) #start phases
         self.serialConn.write(dataToSend)
         self.serialConn.write( bytes([253]) ) #commit
@@ -62,6 +70,7 @@ class SonicSurface:
         distances = np.linalg.norm(self.emittersPos - pos, axis=1)
         lambdas = distances / self.WAVELENGTH
         frags = np.ceil(lambdas) - lambdas
+        
         self.sendPhases( 2.0 * np.pi * frags )
         
     def multiFocusIBP(self, points, iters=20, resetPhases=False):
@@ -88,28 +97,104 @@ class SonicSurface:
         self.sendPhases( phases )
         
   
+try:  
+    if __name__ == "__main__":
+    
+        array = SonicSurface()
+        # array.connect( -1 )
+       
+        # for _ in range(3):
+        #     array.switchOnOrOff( True )
+        #     time.sleep(1)
+        #     array.switchOnOrOff( False )
+        #     time.sleep(1)
         
-if __name__ == "__main__":
-    import time
-
-    array = SonicSurface()
-    array.connect( -1 )
-   
-    for _ in range(3):
-        array.switchOnOrOff( True )
+        
+        
+        
+        # listSwitchOn = [array.PHASE_DIVS for i in range(array.N_EMMITERS)]
+        # # Lets switch on 16 in the middle
+        # for i in range(6,10):
+        #     for j in range(6,10):
+        #         listSwitchOn[array.orderArray[16 * i + j]] = 0
+        
+        # listSwitchOn = [array.PHASE_DIVS for i in range(array.N_EMMITERS)]
+        # # 4 focal points
+        # for i in range(2,5):
+        #     for j in range(2, 5):
+        #         listSwitchOn[array.orderArray[16 * i + j]] = 0
+        #     for j in range(11, 14):
+        #         listSwitchOn[array.orderArray[16 * i + j]] = 0
+        # for i in range(11,14):
+        #     for j in range(2, 5):
+        #         listSwitchOn[array.orderArray[16 * i + j]] = 0
+        #     for j in range(11, 14):
+        #         listSwitchOn[array.orderArray[16 * i + j]] = 0
+                
+        # # Switch one by one to check which ones are broken
+        # inp = " "
+        # num = -1
+        # while inp != "end":
+        #     inp = input("")
+        #     if inp == "":
+        #         num += 1
+        #     elif inp == "a":
+        #         num -= 1
+                
+        #     listSwitchOn = [array.PHASE_DIVS for i in range(array.N_EMMITERS)]
+        #     listSwitchOn[array.orderArray[num]] = 0
+            
+        #     dataToSend = bytes(listSwitchOn)    
+        #     array.serialConn.write( bytes([254]) ) #start phases
+        #     array.serialConn.write(dataToSend)
+        #     array.serialConn.write( bytes([253]) ) #commit
+        #     time.sleep(1)
+                
+            
+        # Switch one just the first one    
+        # listSwitchOn = [0 for i in range(array.N_EMMITERS)]
+        # listSwitchOn[array.orderArray[0]] = 0
+            
+        # 4x4 
+        # listSwitchOn = [array.PHASE_DIVS for i in range(array.N_EMMITERS)]
+        # for i in range(0,16,5):
+        #     for j in range(0,16,5):
+        #         listSwitchOn[array.orderArray[16 * i + j]] = 0
+                
+        # dataToSend = bytes(listSwitchOn)    
+        # array.serialConn.write( bytes([254]) ) #start phases
+        # array.serialConn.write(dataToSend)
+        # array.serialConn.write( bytes([253]) ) #commit
+        
+        with open("phasesEmitters  20240227-1459PM53413863.csv", newline='') as csvfile:
+            data = list(csv.reader(csvfile))
+            patternPhases= np.array(data[0]).astype(float)  
+        
+        # 16x16 pattern
+        reorderedPatternPhases = np.zeros(array.N_EMMITERS)
+        for i in range(len(patternPhases)):
+            reorderedPatternPhases[array.orderArray[i]] = patternPhases[i]
+        reorderedPatternPhases = np.array(reorderedPatternPhases)
+        
+        save = True
+        
+        if save:
+            np.savetxt("reorderedPatternPhases.csv", reorderedPatternPhases, delimiter = ',')
+            
+        # # 4x4 pattern
+        # reorderedPatternPhases = np.zeros(array.N_EMMITERS)
+        # pos = 0
+        # for i in range(0,16,5):
+        #     for j in range(0,16,5):
+        #         reorderedPatternPhases[array.orderArray[16 * i + j]] = patternPhases[pos]
+        #         pos += 1
+        # reorderedPatternPhases = np.array(reorderedPatternPhases)
+        
+        # array.sendPhases(reorderedPatternPhases)
         time.sleep(1)
-        array.switchOnOrOff( False )
-        time.sleep(1)
-    
-    dist = 0.19
-    rad = 0.04
-    array.focusAtPos(0,dist,0)
-    time.sleep(1)
-    for x in np.linspace(0.0,rad, 50):
-        array.focusAtPos(x,dist,0)
-        time.sleep(0.05)
-    for angle in np.linspace(0,4*np.pi, 350):
-        array.focusAtPos(np.cos(angle) * rad, dist, np.sin(angle) * rad)
-        time.sleep(0.05)
-    
+        
+        array.disconnect()
+        
+except KeyboardInterrupt:
     array.disconnect()
+    pass
